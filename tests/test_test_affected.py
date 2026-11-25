@@ -278,6 +278,36 @@ class TestAffectedByImports:
         sel = _select(repo, "pyrite/c.py")
         assert "tests/test_registry.py" not in sel.files
 
+    def test_an_extension_change_follows_helpers_that_load_plugins(self, repo):
+        _write(repo, "tests/world.py", "def make_world():\n    get_registry()\n")
+        _write(repo, "tests/helpers.py", "from .world import make_world\n")
+        _write(repo, "tests/test_mcp_matrix.py", "from .helpers import make_world\n")
+        _write(
+            repo,
+            "tests/sub/conftest.py",
+            """
+            import pytest
+
+            from tests.world import make_world
+
+
+            @pytest.fixture
+            def world():
+                return make_world()
+            """,
+        )
+        _write(repo, "tests/sub/test_rest_matrix.py", "def test_rest(world):\n    pass\n")
+        _write(repo, "tests/sub/test_other.py", "def test_something_else():\n    pass\n")
+
+        mcp = "tests/test_mcp_matrix.py"
+        rest = "tests/sub/test_rest_matrix.py"
+        sel = _select(repo, "extensions/foo/src/pyrite_foo/plugin.py")
+        assert {mcp, rest} <= set(sel.files)
+        assert "tests/sub/test_other.py" not in sel.files
+
+        sel = _select(repo, "pyrite/c.py")
+        assert {mcp, rest}.isdisjoint(sel.files)
+
     def test_a_name_matches_whole_words_only(self, repo):
         # "x.md" must not select a test that mentions "index.md"
         _write(repo, "tests/test_index.py", "NAME = 'index.md'\n")

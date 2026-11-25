@@ -37,8 +37,9 @@ Selection
              ``--helper-threshold`` test files.
 
 A change under extensions/*/src/ also selects every test that mentions
-``get_registry``, ``entry_points`` or ``PluginRegistry``: core tests reach
-plugins through entry points, which no import names.
+``get_registry``, ``entry_points`` or ``PluginRegistry`` directly or through a
+helper it imports (including imports attributed to fixtures): core tests
+reach plugins through entry points, which no import names.
 
 Experimental tests (#657) are deselected: ``--run`` passes ``-m "not slow and
 not e2e and not experimental"``, the gating CI job's expression, so a push is
@@ -732,10 +733,20 @@ def select(
     packages: set[str] = set()  # changed __init__ modules
     plugin_change = next((r for r in changed if _EXTENSION_SRC.match(r)), None)
     if plugin_change:
-        # Core tests reach extensions through entry points, not imports.
+        # Core tests reach extensions through entry points, not imports. Use
+        # the existing graph to follow helpers imported by tests or fixtures.
+        # A conftest is not itself a helper imported by every test in scope.
+        plugin_helpers = []
+        why = f"loads plugins ({plugin_change})"
         for f in graph.files.values():
-            if f.is_test and _LOADS_PLUGINS.search(f.text):
-                selection.files.setdefault(f.path, f"loads plugins ({plugin_change})")
+            if not _LOADS_PLUGINS.search(f.text):
+                continue
+            if f.is_test:
+                selection.files.setdefault(f.path, why)
+            elif graph.in_test_root(f.path) and not f.path.endswith("/conftest.py"):
+                plugin_helpers.extend(f.names)
+        for rel in sorted(_tests_reaching(graph, plugin_helpers)):
+            selection.files.setdefault(rel, why)
     for rel in changed:
         f = graph.files.get(rel)
         if f is not None and f.is_test:
