@@ -4,7 +4,13 @@ schemas, and the schema migration of a KB's entry files."""
 from typing import Any
 
 from pyrite.config import KBConfig, PyriteConfig
-from pyrite.exceptions import KBNotFoundError, ValidationError, outside_text
+from pyrite.exceptions import (
+    EntryLoadError,
+    FrontmatterError,
+    KBNotFoundError,
+    ValidationError,
+    outside_text,
+)
 from pyrite.utils.yaml import read_kb_yaml
 
 
@@ -173,7 +179,9 @@ class SchemaService:
         ``Unset`` per key it dropped, ``_schema_version`` set to the type's
         version) is written onto the file's own bytes with ``apply`` and
         published with compare-and-replace (#955, B6 P4). Every other byte
-        stays as written. ``dry_run`` counts and writes nothing.
+        stays as written. The proposed bytes must load as their declared
+        type before publication. ``dry_run`` makes the same check and writes
+        nothing.
 
         Returns ``checked`` (files read and judged), ``migrated`` (files
         behind, written unless ``dry_run``) and ``errors`` (``path`` and
@@ -227,7 +235,7 @@ class SchemaService:
                 entry_sv = int(values.get("_schema_version", 0))
                 needs_save = target > 0 and entry_sv != target
 
-                if needs_save and not dry_run:
+                if needs_save:
                     # The registry's chain runs on a deep copy, so a
                     # migration that changes its input in place cannot
                     # change `before` too (the shallow copy lost such a
@@ -243,7 +251,21 @@ class SchemaService:
                     ops = migration_operations(before, after)
                     span = FrontmatterSpan(split.yaml_start, split.close_start, split.close_end)
                     new_text, _report = apply(text, ops, span)
-                    publish_entry_text(file_path, new_text, expect=raw, root=kb.path)
+                    try:
+                        repo.load_entry_from_bytes(file_path, new_text.encode("utf-8"))
+                    except FrontmatterError as e:
+                        detail = (
+                            e.loader_message if isinstance(e, EntryLoadError) else outside_text(e)
+                        )
+                        errors.append(
+                            {
+                                "path": file_path.relative_to(kb.path).as_posix(),
+                                "error": f"the migration result would not load ({detail})",
+                            }
+                        )
+                        continue
+                    if not dry_run:
+                        publish_entry_text(file_path, new_text, expect=raw, root=kb.path)
                 # Counted after the write: a file that failed to write was
                 # neither checked nor migrated.
                 checked += 1

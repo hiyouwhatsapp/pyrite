@@ -352,7 +352,8 @@ def schema_migrate(
 
     ``SchemaService.migrate_entries`` does the work: each entry whose
     ``_schema_version`` is behind its type's gets the registered migration
-    chain's difference written onto the file's own bytes (#955, B6 P4).
+    chain's difference written onto the file's own bytes (#955, B6 P4) only
+    if the result loads. A dry run reports the same refusals without saving.
     A file that could not be read, judged or written is an error, logged
     here, and counts as neither checked nor migrated.
     """

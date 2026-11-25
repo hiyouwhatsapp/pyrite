@@ -2210,7 +2210,9 @@ migrates; until then `kb validate` drift exits `2` and `ids missing` `3`.
     already fine; `export collection` counts exported entries, `search --files`
     counts files scanned, `repo sync` repos synced): `index embed` and
     `pyrite-admin index embed` (`Errors: N`; the entries stay owed and a rerun
-    retries them, so offline with nothing embedded is `1`), `schema migrate`,
+    retries them, so offline with nothing embedded is `1`), `schema migrate`
+    (a result that would not load is reported with the KB-relative path,
+    leaves the file unchanged, and is not counted as migrated, even in a dry run),
     `index reconcile`, `import`, `links bulk-create`, `export collection`,
     `export site` (done = entries exported, a row that could not be loaded is
     named and counted as left out), `search --files`, `repo sync`, `batch-read`
